@@ -68,7 +68,7 @@ bool JlCompress::compressFile(QuaZip* zip, QString fileName, QString fileDest) {
 
     // Apro il file risulato
     QuaZipFile outFile(zip);
-    if(!outFile.open(QIODevice::WriteOnly, QuaZipNewInfo(fileDest, inFile.fileName()))) return false;
+    if(!outFile.open(QIODevice::WriteOnly, QuaZipNewInfo(fileDest, inFile.fileName()), 0, 0, 0, Z_NO_COMPRESSION)) return false;
 
     // Copio i dati
     if (!copyData(inFile, outFile) || outFile.getZipError()!=UNZ_OK) {
@@ -82,7 +82,7 @@ bool JlCompress::compressFile(QuaZip* zip, QString fileName, QString fileDest) {
 
     return true;
 }
-
+#include "windows.h"
 /**OK
  * Comprime la cartella dir nel file fileCompressed, se recursive e true allora
  * comprime anche le sotto cartelle. I nomi dei file preceduti dal path creato
@@ -120,7 +120,7 @@ bool JlCompress::compressSubDir(QuaZip* zip, QString dir, QString origDir, bool 
 	if (dir != origDir) {
 		QuaZipFile dirZipFile(zip);
 		if (!dirZipFile.open(QIODevice::WriteOnly,
-			QuaZipNewInfo(origDirectory.relativeFilePath(dir) + "/", dir), 0, 0, 0)) {
+			QuaZipNewInfo(origDirectory.relativeFilePath(dir) + "/", dir), 0, 0, 0, Z_NO_COMPRESSION)) {
 				return false;
 		}
 		dirZipFile.close();
@@ -130,15 +130,16 @@ bool JlCompress::compressSubDir(QuaZip* zip, QString dir, QString origDir, bool 
     // Se comprimo anche le sotto cartelle
     if (recursive) {
         // Per ogni sotto cartella
-        QFileInfoList files = directory.entryInfoList(QDir::AllDirs|QDir::NoDotAndDotDot);
+        QFileInfoList files = directory.entryInfoList(QDir::AllDirs|QDir::NoDotAndDotDot|QDir::Hidden|QDir::NoSymLinks);
         Q_FOREACH (QFileInfo file, files) {
+
             // Comprimo la sotto cartella
             if(!compressSubDir(zip,file.absoluteFilePath(),origDir,recursive)) return false;
         }
     }
-
+    
     // Per ogni file nella cartella
-    QFileInfoList files = directory.entryInfoList(QDir::Files);
+    QFileInfoList files = directory.entryInfoList(QDir::Files|QDir::Hidden|QDir::NoSymLinks);
     Q_FOREACH (QFileInfo file, files) {
         // Se non e un file o e il file compresso che sto creando
         if(!file.isFile()||file.absoluteFilePath()==zip->getZipName()) continue;
@@ -467,6 +468,12 @@ QStringList JlCompress::extractDir(QString fileCompressed, QString dir) {
             removeFile(extracted);
             return QStringList();
         }
+#ifdef Q_OS_WIN
+        if (name.startsWith('.')) {
+          // Follow the unix convention and let .folder files be hidden
+          SetFileAttributes(reinterpret_cast<LPCSTR>(absFilePath.toStdString().c_str()), FILE_ATTRIBUTE_HIDDEN);
+        }
+#endif
         extracted.append(absFilePath);
     } while (zip.goToNextFile());
 
